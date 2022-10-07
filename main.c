@@ -22,45 +22,8 @@
 atomic_int curr_conns = 0;
 
 // array of connected client file descriptors
-static struct pollfd clients[MAX_CONNS] = {0};
+struct pollfd clients[MAX_CONNS] = {0};
 
-// static function declarations
-static int new_socket();
-static void setsocketopts(const int srvrfd);
-static inline void setsockaddr_in(struct sockaddr_in *addr);
-static void bind_socket(const int srvrfd, struct sockaddr_in *addr);
-static void listen_socket(const int srvrfd);
-static int setup_socket(struct sockaddr_in *addr);
-static int add_client(const int clientfd);
-static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr);
-static void rd_from_client(const int clientfd, const int index, char *buf);
-static void rd_write_clients();
-void write_to_client(const int clientfd, const char *msg);
-static void write_to_clients(const char *buf, const int sender);
-static void close_all_fds();
-
-
-int main(int argc, char *argv[])
-{
-	struct sockaddr_in addr;
-	int sockfd;
-	pthread_t iothrd;
-
-	sockfd = setup_socket(&addr);
-
-	if (pthread_create(&iothrd, NULL, rd_write_clients, NULL) != 0) {
-		printf("main() failed to create thread");
-		exit(-1);
-	}
-
-	accept_client_conns(sockfd, &addr);
-
-	// clean up
-	pthread_exit(iothrd);
-	close_all_fds();
-
-	return 0;
-}
 
 static int new_socket()
 {
@@ -85,7 +48,7 @@ static void setsocketopts(const int srvrfd)
 	}
 }
 
-static inline void setsockaddr_in(struct sockaddr_in *addr)
+static void setsockaddr_in(struct sockaddr_in *addr)
 {
 	addr->sin_family = AF_INET;
 	addr->sin_addr.s_addr = INADDR_ANY;
@@ -148,6 +111,21 @@ static void remove_client(const int index)
 
 	clients[index].fd = 0;
 	curr_conns--;
+}
+
+static void write_to_client(const int clientfd, const char *msg)
+{
+	if ((write(clientfd, msg, strlen(msg))) < 1)
+		printf("Couldn't write in write_to_client()\n");
+}
+
+// sender = -1 to send to all
+static void write_to_clients(const char *buf, const int sender)
+{
+	for (int i = 0; i < MAX_CONNS; ++i) {
+		if ((clients[i].fd > 2) && (i != sender))
+			write_to_client(clients[i].fd, buf);
+	}
 }
 
 static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
@@ -217,21 +195,6 @@ static void rd_write_clients()
 	}
 }
 
-void write_to_client(const int clientfd, const char *msg)
-{
-	if ((write(clientfd, msg, strlen(msg))) < 1)
-		printf("Couldn't write in write_to_client()\n");
-}
-
-// sender = -1 to send to all
-static void write_to_clients(const char *buf, const int sender)
-{
-	for (int i = 0; i < MAX_CONNS; ++i) {
-		if ((clients[i].fd > 2) && (i != sender))
-			write_to_client(clients[i].fd, buf);
-	}
-}
-
 static void close_all_fds()
 {
 	for (int i = 0; i < MAX_CONNS && curr_conns > 0; ++i) {
@@ -242,4 +205,24 @@ static void close_all_fds()
 	}
 }
 
+int main(int argc, char *argv[])
+{
+	struct sockaddr_in addr;
+	int sockfd;
+	pthread_t iothrd;
 
+	sockfd = setup_socket(&addr);
+
+	if (pthread_create(&iothrd, NULL, rd_write_clients, NULL) != 0) {
+		printf("main() failed to create thread");
+		exit(-1);
+	}
+
+	accept_client_conns(sockfd, &addr);
+
+	// clean up
+	pthread_exit(iothrd);
+	close_all_fds();
+
+	return 0;
+}
