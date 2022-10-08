@@ -21,8 +21,10 @@
 // current number of clients connected
 atomic_int curr_conns = 0;
 
+#define EMPTY_FD -1
+
 // array of connected client file descriptors
-struct pollfd clients[MAX_CONNS] = {0};
+struct pollfd clients[MAX_CONNS] = {EMPTY_FD};
 
 
 static int new_socket()
@@ -93,7 +95,7 @@ static int add_client(const int clientfd)
 		return -1;
 
 	for (int i = 0; i < MAX_CONNS; ++i) {
-		if (clients[i].fd == 0) {
+		if (clients[i].fd == EMPTY_FD) {
 			clients[i].fd = clientfd;
 			clients[i].events = POLLIN | POLLPRI;
 			curr_conns++;
@@ -109,7 +111,7 @@ static void remove_client(const int index)
 	if (index < 0)
 		return;
 
-	clients[index].fd = 0;
+	clients[index].fd = EMPTY_FD;
 	curr_conns--;
 }
 
