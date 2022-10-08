@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 // connection port
@@ -15,16 +16,27 @@
 // max buffer size messages
 #define BUF_SIZE 1024
 
+// each msg from the client is sent with a "1" at the start
+#define MSG_START_OFFSET 1
+
 // max number of clients that can be connected at once
 #define MAX_CONNS 4
 
 // current number of clients connected
 atomic_int curr_conns = 0;
 
-#define EMPTY_FD -1
-
 // array of connected client file descriptors
-struct pollfd clients[MAX_CONNS] = {EMPTY_FD};
+struct pollfd clients[MAX_CONNS];
+
+
+static void clients_init()
+{
+	for (int i = 0; i < MAX_CONNS; ++i) {
+		clients[i].fd = -1;
+		clients[i].events = 0;
+		clients[i].revents = 0;
+	}
+}
 
 
 static int new_socket()
@@ -95,7 +107,7 @@ static int add_client(const int clientfd)
 		return -1;
 
 	for (int i = 0; i < MAX_CONNS; ++i) {
-		if (clients[i].fd == EMPTY_FD) {
+		if (clients[i].fd == -1) {
 			clients[i].fd = clientfd;
 			clients[i].events = POLLIN | POLLPRI;
 			curr_conns++;
@@ -111,7 +123,7 @@ static void remove_client(const int index)
 	if (index < 0)
 		return;
 
-	clients[index].fd = EMPTY_FD;
+	clients[index].fd = -1;
 	curr_conns--;
 }
 
@@ -148,7 +160,7 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 		}
 
 		if ((clientfd = accept(srvrfd, (struct sockaddr*)addr,
-				       &addrsz)) < 0) {
+				       &addrsz/*, O_NONBLOCK*/)) < 0) {
 			printf("accept_client_conns() accept failed");
 			exit(-1);
 		}
@@ -162,17 +174,41 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 	}
 }
 
-static void rd_from_client(const int clientfd, const int index, char *buf)
+/*
+ * function reads from client socket
+ * and places the data in buf.
+ *
+ * returns - 0 on success, -1 otherwise
+ */
+static int rd_from_client(const int clientfd, const int index, char *buf)
 {
 	if (read(clientfd, buf, BUF_SIZE) < 1) {
 		remove_client(index); // client must have disconnected
 		printf("rd_from_client() read error\n");
+		return -1;
 	}
 
-	buf[strlen(buf) - 1] = '\0'; // remove \n from the end
+	if (buf[0] != '1')
+		return -1;
+
+	if (buf[strlen(buf) - 1] == '\n')
+		buf[strlen(buf) - 1] = '\0';
+
+	return 0;
 }
 
-static void rd_write_clients()
+static void rd_write_clients(char *buf, int num_fds)
+{
+	for (int i = 0; i < MAX_CONNS && num_fds > 0; ++i) {
+		if (clients[i].revents & POLLIN) {
+			if (rd_from_client(clients[i].fd, i, buf) == 0)
+				write_to_clients(buf + MSG_START_OFFSET, i);
+			num_fds--;
+		}
+	}
+}
+
+static void process_messages()
 {
 	char buf[BUF_SIZE];
 	int num;
@@ -187,13 +223,7 @@ static void rd_write_clients()
 			continue;
 		}
 
-		for (int i = 0; i < MAX_CONNS && num > 0; ++i) {
-			if (clients[i].revents & POLLIN) {
-				rd_from_client(clients[i].fd, i, buf);
-				write_to_clients(buf, i);
-				num--;
-			}
-		}
+		rd_write_clients(buf, num);
 	}
 }
 
@@ -214,8 +244,9 @@ int main(int argc, char *argv[])
 	pthread_t iothrd;
 
 	sockfd = setup_socket(&addr);
+	clients_init();
 
-	if (pthread_create(&iothrd, NULL, rd_write_clients, NULL) != 0) {
+	if (pthread_create(&iothrd, NULL, process_messages, NULL) != 0) {
 		printf("main() failed to create thread");
 		exit(-1);
 	}
