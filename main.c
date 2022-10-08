@@ -43,7 +43,9 @@ static int new_socket()
 {
 	int srvrfd;
 
-	if ((srvrfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+	if ((srvrfd = socket(AF_INET,
+			     SOCK_STREAM | SOCK_NONBLOCK,
+			     0)) < 0) {
 		printf("socket failed");
 		exit(-1);
 	}
@@ -159,8 +161,8 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 			exit(-1);
 		}
 
-		if ((clientfd = accept(srvrfd, (struct sockaddr*)addr,
-				       &addrsz/*, O_NONBLOCK*/)) < 0) {
+		if ((clientfd = accept4(srvrfd, (struct sockaddr*)addr,
+				       &addrsz, SOCK_NONBLOCK)) < 0) {
 			printf("accept_client_conns() accept failed");
 			exit(-1);
 		}
