@@ -221,7 +221,7 @@ int main(int argc, char *argv[])
 	accept_client_conns(sockfd, &addr);
 
 	// clean up
-	pthread_exit(iothrd);
+	pthread_exit(&iothrd);
 	close_all_fds();
 
 	return 0;
