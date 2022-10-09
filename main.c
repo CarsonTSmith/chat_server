@@ -16,11 +16,16 @@
 // max buffer size messages
 #define BUF_SIZE 1024
 
-// each msg from the client is sent with a "1" at the start
+/*
+ * each msg from the client is sent with a "1" at the start
+ * this is the msg offset in indexes (AKA bytes)
+ */
 #define MSG_START_OFFSET 1
 
 // max number of clients that can be connected at once
 #define MAX_CONNS 4
+
+#define SEND_TO_ALL -1
 
 // current number of clients connected
 atomic_int curr_conns = 0;
@@ -171,7 +176,7 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 			write_to_client(clientfd, "Server is full");
 			close(clientfd);
 		} else {
-			write_to_clients("Client Connected", -1); // send to all
+			write_to_clients("Client Connected", SEND_TO_ALL);
 		}
 	}
 }
@@ -229,8 +234,10 @@ static void process_messages()
 	}
 }
 
-static void close_all_fds()
+static void close_all_fds(const int sockfd)
 {
+	close(sockfd);
+
 	for (int i = 0; i < MAX_CONNS && curr_conns > 0; ++i) {
 		if (clients[i].fd > 2) {
 			close(clients[i].fd);
@@ -257,7 +264,7 @@ int main(int argc, char *argv[])
 
 	// clean up
 	pthread_exit(&iothrd);
-	close_all_fds();
+	close_all_fds(sockfd);
 
 	return 0;
 }
