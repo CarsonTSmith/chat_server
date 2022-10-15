@@ -3,7 +3,8 @@ First, clone the repo.
 Then type:
 make
 
-This will create the binary in ./bin/
+To run the binary type:
+./bin/test
 
 To clean type:
 make clean
