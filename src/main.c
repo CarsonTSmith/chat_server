@@ -12,38 +12,24 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "client.h"
+
 // connection port
 #define PORT 8085
 
-// max buffer size messages
-#define BUF_SIZE 1024
+// each new msg sends the sz of the msg
+// in the first 8 bytes
+#define HEADERSZ 8 
 
-/*
- * each msg from the client is sent with a "1" at the start
- * this is the msg offset in indexes (AKA bytes)
- */
-#define MSG_START_OFFSET 1
-
-// max number of clients that can be connected at once
-#define MAX_CONNS 4
+#define SERVER_FULL "Server is full"
 
 #define SEND_TO_ALL -1
 
 // current number of clients connected
-atomic_int curr_conns = 0;
+atomic_int num_clients = 0;
 
-// array of connected client file descriptors
-struct pollfd clients[MAX_CONNS];
-
-
-static void clients_init()
-{
-	for (int i = 0; i < MAX_CONNS; ++i) {
-		clients[i].fd = -1;
-		clients[i].events = 0;
-		clients[i].revents = 0;
-	}
-}
+struct pollfd p_clients[MAX_CLIENTS];
+struct client clients[MAX_CLIENTS];
 
 
 static int new_socket()
@@ -88,7 +74,7 @@ static void bind_socket(const int srvrfd, struct sockaddr_in *addr)
 
 static void listen_socket(const int srvrfd)
 {
-	if (listen(srvrfd, MAX_CONNS) < 0) {
+	if (listen(srvrfd, MAX_CLIENTS) < 0) {
 		printf("listen failed");
 		exit(-1);
 	}
@@ -112,14 +98,14 @@ static int setup_socket(struct sockaddr_in *addr)
 // returns - 0 on success, -1 otherwise
 static int add_client(const int clientfd)
 {
-	if (curr_conns >= MAX_CONNS) // server full
+	if (num_clients >= MAX_CLIENTS) // server full
 		return -1;
 
-	for (int i = 0; i < MAX_CONNS; ++i) {
-		if (clients[i].fd == -1) {
-			clients[i].fd = clientfd;
-			clients[i].events = POLLIN | POLLPRI;
-			curr_conns++;
+	for (int i = 0; i < MAX_CLIENTS; ++i) {
+		if (p_clients[i].fd == -1) {
+			p_clients[i].fd = clientfd;
+			p_clients[i].events = POLLIN | POLLPRI;
+			num_clients++;
 			break;
 		}
 	}
@@ -132,23 +118,49 @@ static void remove_client(const int index)
 	if (index < 0)
 		return;
 
-	clients[index].fd = -1;
-	curr_conns--;
+	p_clients[index].fd = -1;
+	num_clients--;
 }
 
-static void write_to_client(const int clientfd, const char *msg)
+static void server_send_msg(const int clientfd, const char *msg)
 {
-	if ((write(clientfd, msg, strlen(msg))) < 1)
+	if((write(clientfd, msg, strlen(msg))) < 1)
+		printf("server_send_msg() write failed\n");	
+}
+
+static void server_send_msg_all(const char *msg)
+{
+	for (int i = 0; i < MAX_CLIENTS; ++i) {
+		if (p_clients[i].fd > 2)
+			server_send_msg(p_clients[i].fd, msg);
+	}
+}
+
+/*
+ * resets the client struct to 0
+ */
+static void reset_client(const int index)
+{
+	memset(clients[index].buf, 0, clients[index].bytesrd);
+	clients[index].msgsz = 0;
+	clients[index].bytesrd = 0;
+	clients[index].msg_in_proc = MSG_NOT_IN_PROC;
+}
+
+static void write_to_client(const int clientfd, const struct client *sender)
+{
+	if ((write(clientfd, sender->buf, sender->msgsz)) < 1)
 		printf("Couldn't write in write_to_client()\n");
 }
 
-// sender = -1 to send to all
-static void write_to_clients(const char *buf, const int sender)
+static void write_to_clients(const int sender)
 {
-	for (int i = 0; i < MAX_CONNS; ++i) {
-		if ((clients[i].fd > 2) && (i != sender))
-			write_to_client(clients[i].fd, buf);
+	for (int i = 0; i < MAX_CLIENTS; ++i) {
+		if ((p_clients[i].fd > 2) && (i != sender))
+			write_to_client(p_clients[i].fd, &clients[sender]);
 	}
+
+	reset_client(sender);
 }
 
 static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
@@ -175,43 +187,116 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 		}
 
 		if (add_client(clientfd) < 0) { // if failed to add client
-			write_to_client(clientfd, "Server is full");
+			server_send_msg(clientfd, SERVER_FULL);
 			close(clientfd);
 		} else {
-			write_to_clients("Client Connected", SEND_TO_ALL);
+			server_send_msg_all("Client Connected");
 		}
 	}
+}
+
+/*
+ * If this is the first data being read for this msg
+ * then the first HEADERSZ bytes will be the message length.
+ * We will extract the message length and return it
+ * as an int.
+ *
+ * returns - if successful, an int > -1, 0 otherwise
+ */
+static int rd_header(const char *buf)
+{
+	char msgsz[HEADERSZ + 1];
+	char *endptr;
+	int ret;
+
+	memcpy(msgsz, buf, HEADERSZ);
+	msgsz[HEADERSZ] = '\0';
+	ret = strtol(msgsz, &endptr, 10);
+	if (ret >= 0)
+		return ret;
+
+	return 0;
+}
+
+/*
+ * Concatenates buf to the client's (given by index) buf 
+ */
+static void cat_client_buf(const char *buf, const int index, const int bytesrd)
+{
+	int total_bytesrd;
+	
+	total_bytesrd = bytesrd + clients[index].bytesrd;
+	strncat(clients[index].buf + clients[index].bytesrd,
+		buf, total_bytesrd > BUFSZ ?
+		BUFSZ - clients[index].bytesrd : bytesrd);
+	clients[index].bytesrd += bytesrd;
 }
 
 /*
  * function reads from client socket
  * and places the data in buf.
  *
- * returns - 0 on success, -1 otherwise
+ * returns - 1, on success and the entire msg has been received
+ *           0 on success but only a partial msg has been received,
+ *           -1 otherwise, disconnect or socket error
  */
-static int rd_from_client(const int clientfd, const int index, char *buf)
+static int rd_from_client(const int clientfd, const int index)
 {
-	if (read(clientfd, buf, BUF_SIZE) < 1) {
-		remove_client(index); // client must have disconnected
-		printf("rd_from_client() read error\n");
-		return -1;
+	char buf[BUFSZ] = {0};
+	int bytesrd, msgsz, ret, bytesleft;
+
+	// this read needs to be put in a loop unfortunately...	
+	if (MSG_NOT_IN_PROC == clients[index].msg_in_proc) {
+		read(clientfd, buf, HEADERSZ);
+		buf[HEADERSZ] = '\0';	
+		msgsz = rd_header(buf);
+		clients[index].msgsz = msgsz > BUFSZ ? BUFSZ : msgsz; 
+		clients[index].msg_in_proc = MSG_IN_PROC;
 	}
 
-	if (buf[0] != '1')
-		return -1;
-
-	if (buf[strlen(buf) - 1] == '\n')
-		buf[strlen(buf) - 1] = '\0';
-
-	return 0;
+	while (1) {
+		bytesleft = clients[index].msgsz - clients[index].bytesrd;
+		bytesrd = read(clientfd, buf, bytesleft);
+		if (bytesrd > 0) {
+			cat_client_buf(buf, index, bytesrd);	
+			if (clients[index].bytesrd < clients[index].msgsz) {
+				continue;
+			} else {
+				ret = 1;
+				break; // got all the bytes
+			}	
+		} else if (bytesrd == 0) {
+			ret = 1;
+			break;	
+			//remove_client(index); // client disconnected
+			//ret = -1;
+			//break;
+		} else if (bytesrd == -1) {
+			if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
+				ret = 0; // go back to polling	
+				break;
+			} else {
+				ret = -1;
+				remove_client(index);
+				server_send_msg(index, 
+                                                "Disconnecting from Server");
+				break;
+			}
+		}
+	}
+	
+	if (ret == -1)
+		reset_client(index);
+	
+	return ret;
 }
 
-static void rd_write_clients(char *buf, int num_fds)
+static void rd_write_clients(int num_fds)
 {
-	for (int i = 0; i < MAX_CONNS && num_fds > 0; ++i) {
-		if (clients[i].revents & POLLIN) {
-			if (rd_from_client(clients[i].fd, i, buf) == 0)
-				write_to_clients(buf + MSG_START_OFFSET, i);
+	for (int i = 0; i < MAX_CLIENTS && num_fds > 0; ++i) {
+		if (p_clients[i].revents & POLLIN) {
+			if (rd_from_client(p_clients[i].fd, i) == 1)
+				write_to_clients(i);
 			num_fds--;
 		}
 	}
@@ -219,11 +304,10 @@ static void rd_write_clients(char *buf, int num_fds)
 
 static void *process_messages(void *arg)
 {
-	char buf[BUF_SIZE];
 	int num;
 
 	while (1) {
-		num = poll(clients, MAX_CONNS, 500); // 0.5s timeout
+		num = poll(p_clients, MAX_CLIENTS, 500); // 0.5s timeout
 
 		if (num < 0) { // poll error
 			printf("rd_from_clients() poll error\n");
@@ -232,7 +316,7 @@ static void *process_messages(void *arg)
 			continue;
 		}
 
-		rd_write_clients(buf, num);
+		rd_write_clients(num);
 	}
 
 	return NULL;
@@ -242,10 +326,10 @@ static void close_all_fds(const int sockfd)
 {
 	close(sockfd);
 
-	for (int i = 0; i < MAX_CONNS && curr_conns > 0; ++i) {
-		if (clients[i].fd > 2) {
-			close(clients[i].fd);
-			curr_conns--;
+	for (int i = 0; i < MAX_CLIENTS && num_clients > 0; ++i) {
+		if (p_clients[i].fd > 2) {
+			close(p_clients[i].fd);
+			num_clients--;
 		}
 	}
 }

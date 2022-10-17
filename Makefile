@@ -8,7 +8,7 @@ BDIR := bin
 SRCS := $(wildcard $(SDIR)/*.c)
 
 # The aplication generated 
-APPNAME := $(BDIR)/test
+APPNAME := $(BDIR)/server
 # -- End of customization section ---
 
 # Replace .c extension on SRCS to get objfiles using gnu make pattern rules and substitution references.
@@ -31,7 +31,7 @@ $(APPNAME) : $(OBJFILES)
 	$(CC) $(LDFLAGS) $^ -o $(APPNAME)
 
 # Add all warnings/errors to cflags default.  This is not required but is a best practice
-CFLAGS += -Wall -Werror
+CFLAGS += -g -Wall -Werror
 
 # The below content is from  http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/
 # with the following changes:
