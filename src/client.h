@@ -1,6 +1,7 @@
 #ifndef _CLIENT_H
 #define _CLIENT_H
 
+#include <stdatomic.h>
 #include <poll.h>
 
 #define BUFSZ 8192
@@ -20,6 +21,17 @@ struct client {
 extern struct pollfd p_clients[MAX_CLIENTS];
 extern struct client clients[MAX_CLIENTS];
 
+extern atomic_int num_clients;
+
 void clients_init(); 
+void reset_client(const int index);
+void write_to_client(const int clientfd, const struct client *sender);
+void write_to_clients(const int sender);
+void server_send_msg(const int clientfd, const char *msg);
+void server_send_msg_all(const char *msg);
+int rd_from_client(const int clientfd, const int index);
+void rd_write_clients(int num_fds);
+int add_client(const int fd);
+void close_all_fds(const int sockfd);
 
 #endif
