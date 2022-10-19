@@ -7,6 +7,7 @@
 #include "client.h"
 
 #define HEADERSZ 8
+#define DISCONNECT_FROM_SERVER_MSG "00000026Disconnecting from server"
 
 /*
  * If this is the first data being read for this msg
@@ -16,7 +17,7 @@
  *
  * returns - if successful, an int > -1, 0 otherwise
  */
-static int rd_header(const char *buf)
+static int rd_msg_len(const char *buf)
 {
 	char msgsz[HEADERSZ + 1];
 	char *endptr;
@@ -54,6 +55,23 @@ static void remove_client(const int index)
 	num_clients--;
 }
 
+/*
+ * Reads the msg header and gets the msg size.
+ * Prepends a copy of the msg length to the 
+ * client msg buffer.
+ */
+static void rd_header(char *buf, const int clientfd, const int index)
+{
+	int msgsz;
+
+	read(clientfd, buf, HEADERSZ);
+	buf[HEADERSZ] = '\0';	
+	msgsz = rd_msg_len(buf);
+	memcpy(clients[index].buf, buf, HEADERSZ);
+	clients[index].msgsz = msgsz > BUFSZ ? BUFSZ : msgsz; 
+	clients[index].msg_in_proc = MSG_IN_PROC;
+}
+
 void clients_init()
 {
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
@@ -73,18 +91,19 @@ void reset_client(const int index)
 
 void write_to_client(const int clientfd, const struct client *sender)
 {
-	if ((write(clientfd, sender->buf, sender->msgsz)) < 1)
+	if ((write(clientfd, sender->buf, HEADERSZ + sender->msgsz)) < 1)
 		printf("Couldn't write in write_to_client()\n");
 }
 
-void write_to_clients(const int sender)
+void write_to_clients(const int sender_index)
 {
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
-		if ((p_clients[i].fd > 2) && (i != sender))
-			write_to_client(p_clients[i].fd, &clients[sender]);
+		if ((p_clients[i].fd > 2) && (i != sender_index))
+			write_to_client(p_clients[i].fd,
+				        &clients[sender_index]);
 	}
 
-	reset_client(sender);
+	reset_client(sender_index);
 }
 
 /*
@@ -98,16 +117,10 @@ void write_to_clients(const int sender)
 int rd_from_client(const int clientfd, const int index)
 {
 	char buf[BUFSZ] = {0};
-	int bytesrd, msgsz, ret, bytesleft;
+	int bytesrd, bytesleft, ret;
 
-	// this read needs to be put in a loop unfortunately...	
-	if (MSG_NOT_IN_PROC == clients[index].msg_in_proc) {
-		read(clientfd, buf, HEADERSZ);
-		buf[HEADERSZ] = '\0';	
-		msgsz = rd_header(buf);
-		clients[index].msgsz = msgsz > BUFSZ ? BUFSZ : msgsz; 
-		clients[index].msg_in_proc = MSG_IN_PROC;
-	}
+	if (MSG_NOT_IN_PROC == clients[index].msg_in_proc)
+		rd_header(buf, clientfd, index);
 
 	while (1) {
 		bytesleft = clients[index].msgsz - clients[index].bytesrd;
@@ -131,7 +144,7 @@ int rd_from_client(const int clientfd, const int index)
 				ret = -1;
 				remove_client(index);
 				server_send_msg(index, 
-                                                "Disconnecting from Server");
+                                                DISCONNECT_FROM_SERVER_MSG);
 				break;
 			}
 		}
@@ -175,7 +188,7 @@ int add_client(const int clientfd)
 
 void server_send_msg(const int clientfd, const char *msg)
 {
-	if((write(clientfd, msg, strlen(msg))) < 1)
+	if((write(clientfd, msg, strlen(msg) + 1)) < 1)
 		printf("server_send_msg() write failed\n");	
 }
 
