@@ -18,6 +18,7 @@
 #define PORT 8085
 
 #define SERVER_FULL "Server is full"
+#define CLIENT_CONNECTED_MSG "00000017Client Connected"
 
 #define SEND_TO_ALL -1
 
@@ -117,7 +118,7 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 			server_send_msg(clientfd, SERVER_FULL);
 			close(clientfd);
 		} else {
-			server_send_msg_all("Client Connected");
+			server_send_msg_all(CLIENT_CONNECTED_MSG);
 		}
 	}
 }
