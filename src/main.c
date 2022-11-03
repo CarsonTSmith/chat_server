@@ -25,68 +25,41 @@
 // current number of clients connected
 atomic_int num_clients = 0;
 
-struct pollfd p_clients[MAX_CLIENTS];
+// array of each client's pollfd struct
+struct pollfd p_clients[MAX_CLIENTS]; 
 struct client clients[MAX_CLIENTS];
 
-static int new_socket()
-{
-	int srvrfd;
 
-	if ((srvrfd = socket(AF_INET,
+static int setup_socket(struct sockaddr_in *addr)
+{
+	int sockfd, opt = 1;
+
+	if ((sockfd = socket(AF_INET,
 			     SOCK_STREAM | SOCK_NONBLOCK,
 			     0)) < 0) {
 		printf("socket failed");
 		exit(-1);
 	}
 
-	return srvrfd;
-}
-
-static void setsocketopts(const int srvrfd)
-{
-	int opt = 1;
-
-	if (setsockopt(srvrfd, SOL_SOCKET, SO_REUSEADDR,
+	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
 		       &opt, sizeof(opt)) < 0) {
 		printf("setsockopt");
 		exit(-1);
 	}
-}
 
-static void setsockaddr_in(struct sockaddr_in *addr)
-{
 	addr->sin_family = AF_INET;
 	addr->sin_addr.s_addr = INADDR_ANY;
 	addr->sin_port = htons(PORT);
-}
 
-static void bind_socket(const int srvrfd, struct sockaddr_in *addr)
-{
-	if (bind(srvrfd, (struct sockaddr*)addr, sizeof(*addr)) < 0) {
+	if (bind(sockfd, (struct sockaddr*)addr, sizeof(*addr)) < 0) {
 		printf("bind failed");
 		exit(errno);
 	}
-}
 
-static void listen_socket(const int srvrfd)
-{
-	if (listen(srvrfd, MAX_CLIENTS) < 0) {
+	if (listen(sockfd, MAX_CLIENTS) < 0) {
 		printf("listen failed");
 		exit(-1);
 	}
-}
-
-static int setup_socket(struct sockaddr_in *addr)
-{
-	int sockfd;
-
-	sockfd = new_socket();
-	setsocketopts(sockfd);
-	setsockaddr_in(addr);
-	bind_socket(sockfd, addr);
-	listen_socket(sockfd);
-
-	printf("Server Successfully Created\n");
 
 	return sockfd;
 }

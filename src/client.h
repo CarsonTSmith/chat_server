@@ -1,8 +1,8 @@
 #ifndef _CLIENT_H
 #define _CLIENT_H
 
-#include <stdatomic.h>
 #include <poll.h>
+#include <stdatomic.h>
 
 #define BUFSZ 8192
 #define MAX_CLIENTS 1024
