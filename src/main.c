@@ -61,6 +61,7 @@ static int setup_socket(struct sockaddr_in *addr)
 		exit(-1);
 	}
 
+	printf("server successfully started\n");
 	return sockfd;
 }
 
