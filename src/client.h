@@ -23,7 +23,7 @@ extern struct client clients[MAX_CLIENTS];
 
 extern atomic_int num_clients;
 
-void clients_init(); 
+void clients_init();
 void reset_client(const int index);
 void write_to_client(const int clientfd, const struct client *sender);
 void write_to_clients(const int sender_index);
