@@ -1,5 +1,7 @@
 #define GNU_SOURCE
 
+#include "client.h"
+
 #include <errno.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -11,8 +13,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include "client.h"
 
 // connection port
 #define PORT 8085
@@ -26,23 +26,19 @@
 atomic_int num_clients = 0;
 
 // array of each client's pollfd struct
-struct pollfd p_clients[MAX_CLIENTS]; 
+struct pollfd p_clients[MAX_CLIENTS];
 struct client clients[MAX_CLIENTS];
-
 
 static int setup_socket(struct sockaddr_in *addr)
 {
 	int sockfd, opt = 1;
 
-	if ((sockfd = socket(AF_INET,
-			     SOCK_STREAM | SOCK_NONBLOCK,
-			     0)) < 0) {
+	if ((sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) < 0) {
 		printf("socket failed");
 		exit(-1);
 	}
 
-	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
-		       &opt, sizeof(opt)) < 0) {
+	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
 		printf("setsockopt");
 		exit(-1);
 	}
@@ -51,7 +47,7 @@ static int setup_socket(struct sockaddr_in *addr)
 	addr->sin_addr.s_addr = INADDR_ANY;
 	addr->sin_port = htons(PORT);
 
-	if (bind(sockfd, (struct sockaddr*)addr, sizeof(*addr)) < 0) {
+	if (bind(sockfd, (struct sockaddr *)addr, sizeof(*addr)) < 0) {
 		printf("bind failed");
 		exit(errno);
 	}
@@ -83,7 +79,7 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 		}
 
 		if ((clientfd = accept(srvrfd, (struct sockaddr *)addr,
-				       &addrsz)) < 0) {
+							   &addrsz)) < 0) {
 			printf("accept_client_conns() accept failed");
 			exit(-1);
 		}
@@ -97,14 +93,13 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 	}
 }
 
-
 static void *process_messages(void *arg)
 {
 	int num_fds;
 
 	while (1) {
 		num_fds = poll(p_clients, MAX_CLIENTS, 500); // 0.5s timeout
-		
+
 		if (num_fds > 0) {
 			rd_write_clients(num_fds);
 		} else if (num_fds < 0) { // poll error

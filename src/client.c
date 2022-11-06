@@ -1,10 +1,10 @@
+#include "client.h"
+
 #include <errno.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#include "client.h"
 
 #define HEADERSZ 8
 #define DISCONNECT_FROM_SERVER_MSG "00000026Disconnecting from server"
@@ -33,16 +33,16 @@ static int rd_msg_len(const char *buf)
 }
 
 /*
- * Concatenates buf to the client's (given by index) buf 
+ * Concatenates buf to the client's (given by index) buf
  */
-static void cat_client_buf(const char *buf, const int index, const int bytesrd)
+static void cat_client_buf(const char *buf, const int index, 
+						   const int bytesrd)
 {
 	int total_bytesrd;
-	
+
 	total_bytesrd = bytesrd + clients[index].bytesrd;
-	strncat(clients[index].buf + clients[index].bytesrd,
-		buf, total_bytesrd > BUFSZ ?
-		BUFSZ - clients[index].bytesrd : bytesrd);
+	strncat(clients[index].buf + clients[index].bytesrd, buf,
+			total_bytesrd > BUFSZ ? BUFSZ - clients[index].bytesrd : bytesrd);
 	clients[index].bytesrd += bytesrd;
 }
 
@@ -57,7 +57,7 @@ static void remove_client(const int index)
 
 /*
  * Reads the msg header and gets the msg size.
- * Prepends a copy of the msg length to the 
+ * Prepends a copy of the msg length to the
  * client msg buffer.
  */
 static void rd_header(char *buf, const int clientfd, const int index)
@@ -65,20 +65,20 @@ static void rd_header(char *buf, const int clientfd, const int index)
 	int msgsz;
 
 	read(clientfd, buf, HEADERSZ);
-	buf[HEADERSZ] = '\0';	
+	buf[HEADERSZ] = '\0';
 	msgsz = rd_msg_len(buf);
 	memcpy(clients[index].buf, buf, HEADERSZ);
-	clients[index].msgsz = msgsz > BUFSZ ? BUFSZ : msgsz; 
+	clients[index].msgsz = msgsz > BUFSZ ? BUFSZ : msgsz;
 	clients[index].msg_in_proc = MSG_IN_PROC;
 }
 
 void clients_init()
 {
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
-		p_clients[i].fd = -1; 
+		p_clients[i].fd = -1;
 		clients[i].pfd = &p_clients[i];
 		clients[i].msg_in_proc = MSG_NOT_IN_PROC;
-	} 
+	}
 }
 
 void reset_client(const int index)
@@ -99,8 +99,7 @@ void write_to_clients(const int sender_index)
 {
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
 		if ((p_clients[i].fd > 2) && (i != sender_index))
-			write_to_client(p_clients[i].fd,
-				        &clients[sender_index]);
+			write_to_client(p_clients[i].fd, &clients[sender_index]);
 	}
 
 	reset_client(sender_index);
@@ -126,33 +125,32 @@ int rd_from_client(const int clientfd, const int index)
 		bytesleft = clients[index].msgsz - clients[index].bytesrd;
 		bytesrd = read(clientfd, buf, bytesleft);
 		if (bytesrd > 0) {
-			cat_client_buf(buf, index, bytesrd);	
+			cat_client_buf(buf, index, bytesrd);
 			if (clients[index].bytesrd < clients[index].msgsz) {
 				continue;
 			} else {
 				ret = 1;
 				break; // got all the bytes
-			}	
+			}
 		} else if (bytesrd == 0) {
 			ret = 1;
-			break;	
+			break;
 		} else if (bytesrd == -1) {
 			if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
-				ret = 0; // go back to polling	
+				ret = 0; // go back to polling
 				break;
 			} else {
 				ret = -1;
 				remove_client(index);
-				server_send_msg(index, 
-                                                DISCONNECT_FROM_SERVER_MSG);
+				server_send_msg(index, DISCONNECT_FROM_SERVER_MSG);
 				break;
 			}
 		}
 	}
-	
+
 	if (ret == -1)
 		reset_client(index);
-	
+
 	return ret;
 }
 
@@ -185,11 +183,10 @@ int add_client(const int clientfd)
 	return 0;
 }
 
-
 void server_send_msg(const int clientfd, const char *msg)
 {
-	if((write(clientfd, msg, strlen(msg) + 1)) < 1)
-		printf("server_send_msg() write failed\n");	
+	if ((write(clientfd, msg, strlen(msg) + 1)) < 1)
+		printf("server_send_msg() write failed\n");
 }
 
 void server_send_msg_all(const char *msg)
