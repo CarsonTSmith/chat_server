@@ -98,7 +98,7 @@ void write_to_client(const int clientfd, const struct client *sender)
 void write_to_clients(const int sender_index)
 {
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
-		if ((p_clients[i].fd > 2) && (i != sender_index))
+		if ((p_clients[i].fd > 2))
 			write_to_client(p_clients[i].fd, &clients[sender_index]);
 	}
 
