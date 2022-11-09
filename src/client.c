@@ -19,31 +19,14 @@
  */
 static int rd_msg_len(const char *buf)
 {
-	char msgsz[HEADERSZ + 1];
 	char *endptr;
 	int ret;
 
-	memcpy(msgsz, buf, HEADERSZ);
-	msgsz[HEADERSZ] = '\0';
-	ret = strtol(msgsz, &endptr, 10);
+	ret = strtol(buf, &endptr, 10);
 	if (ret >= 0)
 		return ret;
 
 	return 0;
-}
-
-/*
- * Concatenates buf to the client's (given by index) buf
- */
-static void cat_client_buf(const char *buf, const int index, 
-						   const int bytesrd)
-{
-	int total_bytesrd;
-
-	total_bytesrd = bytesrd + clients[index].bytesrd;
-	strncat(clients[index].buf, buf + HEADERSZ + clients[index].bytesrd,
-			total_bytesrd > BUFSZ ? BUFSZ - clients[index].bytesrd : bytesrd);
-	clients[index].bytesrd += bytesrd;
 }
 
 static void remove_client(const int index)
@@ -60,14 +43,12 @@ static void remove_client(const int index)
  * Prepends a copy of the msg length to the
  * client msg buffer.
  */
-static void rd_header(char *buf, const int clientfd, const int index)
+static void rd_header(const int clientfd, const int index)
 {
 	int msgsz;
 
-	read(clientfd, buf, HEADERSZ);
-	buf[HEADERSZ] = '\0';
-	msgsz = rd_msg_len(buf);
-	memcpy(clients[index].buf, buf, HEADERSZ);
+	read(clientfd, clients[index].buf, HEADERSZ);
+	msgsz = rd_msg_len(clients[index].buf);
 	clients[index].msgsz = msgsz > BUFSZ ? BUFSZ : msgsz;
 	clients[index].msg_in_proc = MSG_IN_PROC;
 }
@@ -106,29 +87,27 @@ void write_to_clients(const int sender_index)
 }
 
 /*
- * function reads from client socket
- * and places the data in buf.
+ * function reads from client socket and puts the data
+ * in the clients msg buffer
  *
  * returns - 1, on success and the entire msg has been received
  *           0 on success but only a partial msg has been received,
  *           -1 otherwise, disconnect or socket error
  * 
- * TODO: remove buf[] and have it read directly to clients[index].buf
  */
 int rd_from_client(const int clientfd, const int index)
 {
-	char buf[BUFSZ] = {0};
 	int bytesrd, bytesleft, ret;
 
 	if (MSG_NOT_IN_PROC == clients[index].msg_in_proc)
-		rd_header(buf, clientfd, index);
+		rd_header(clientfd, index);
 
 	while (1) {
 		bytesleft = clients[index].msgsz - clients[index].bytesrd;
-		bytesrd = read(clientfd, buf + HEADERSZ + clients[index].bytesrd,
-					   bytesleft);
+		bytesrd = read(clientfd, clients[index].buf + HEADERSZ + 
+								 clients[index].bytesrd, bytesleft);
+		clients[index].bytesrd += bytesrd;
 		if (bytesrd > 0) {
-			cat_client_buf(buf, index, bytesrd);
 			if (clients[index].bytesrd < clients[index].msgsz) {
 				continue;
 			} else {
