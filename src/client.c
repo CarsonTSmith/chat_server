@@ -41,7 +41,7 @@ static void cat_client_buf(const char *buf, const int index,
 	int total_bytesrd;
 
 	total_bytesrd = bytesrd + clients[index].bytesrd;
-	strncat(clients[index].buf + clients[index].bytesrd, buf,
+	strncat(clients[index].buf, buf + HEADERSZ + clients[index].bytesrd,
 			total_bytesrd > BUFSZ ? BUFSZ - clients[index].bytesrd : bytesrd);
 	clients[index].bytesrd += bytesrd;
 }
@@ -83,7 +83,7 @@ void clients_init()
 
 void reset_client(const int index)
 {
-	memset(clients[index].buf, 0, clients[index].bytesrd);
+	memset(clients[index].buf, 0, HEADERSZ + clients[index].bytesrd);
 	clients[index].msgsz = 0;
 	clients[index].bytesrd = 0;
 	clients[index].msg_in_proc = MSG_NOT_IN_PROC;
@@ -112,6 +112,8 @@ void write_to_clients(const int sender_index)
  * returns - 1, on success and the entire msg has been received
  *           0 on success but only a partial msg has been received,
  *           -1 otherwise, disconnect or socket error
+ * 
+ * TODO: remove buf[] and have it read directly to clients[index].buf
  */
 int rd_from_client(const int clientfd, const int index)
 {
@@ -123,7 +125,8 @@ int rd_from_client(const int clientfd, const int index)
 
 	while (1) {
 		bytesleft = clients[index].msgsz - clients[index].bytesrd;
-		bytesrd = read(clientfd, buf, bytesleft);
+		bytesrd = read(clientfd, buf + HEADERSZ + clients[index].bytesrd,
+					   bytesleft);
 		if (bytesrd > 0) {
 			cat_client_buf(buf, index, bytesrd);
 			if (clients[index].bytesrd < clients[index].msgsz) {
