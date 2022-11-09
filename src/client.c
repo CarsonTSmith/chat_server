@@ -98,17 +98,17 @@ void write_to_clients(const int sender_index)
  *           -1 otherwise, disconnect or socket error
  * 
  */
-int rd_from_client(const int clientfd, const int index)
+int rd_from_client(const int index)
 {
 	int bytesrd, bytesleft, ret;
 
 	if (MSG_NOT_IN_PROC == clients[index].msg_in_proc)
-		rd_header(clientfd, index);
+		rd_header(p_clients[index].fd, index);
 
 	while (1) {
 		bytesleft = clients[index].msgsz - clients[index].bytesrd;
-		bytesrd = read(clientfd, clients[index].buf + HEADERSZ + 
-								 clients[index].bytesrd, bytesleft);
+		bytesrd = read(p_clients[index].fd, clients[index].buf + HEADERSZ + 
+					   clients[index].bytesrd, bytesleft);
 		clients[index].bytesrd += bytesrd;
 		if (bytesrd > 0) {
 			if (clients[index].bytesrd < clients[index].msgsz) {
@@ -143,7 +143,7 @@ void rd_write_clients(int num_fds)
 {
 	for (int i = 0; i < MAX_CLIENTS && num_fds > 0; ++i) {
 		if (p_clients[i].revents & POLLIN) {
-			if (rd_from_client(p_clients[i].fd, i) == 1)
+			if (rd_from_client(i) == 1)
 				write_to_clients(i);
 			num_fds--;
 		}

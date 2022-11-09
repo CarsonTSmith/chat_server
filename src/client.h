@@ -29,7 +29,7 @@ void write_to_client(const int receiver_index, const int sender_index);
 void write_to_clients(const int sender_index);
 void server_send_msg(const int clientfd, const char *msg);
 void server_send_msg_all(const char *msg);
-int rd_from_client(const int clientfd, const int index);
+int rd_from_client(const int index);
 void rd_write_clients(int num_fds);
 int add_client(const int fd);
 void close_all_fds(const int sockfd);
