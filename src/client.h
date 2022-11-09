@@ -25,7 +25,7 @@ extern atomic_int num_clients;
 
 void clients_init();
 void reset_client(const int index);
-void write_to_client(const int clientfd, const struct client *sender);
+void write_to_client(const int receiver_index, const int sender_index);
 void write_to_clients(const int sender_index);
 void server_send_msg(const int clientfd, const char *msg);
 void server_send_msg_all(const char *msg);

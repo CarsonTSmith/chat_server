@@ -64,23 +64,26 @@ void clients_init()
 
 void reset_client(const int index)
 {
-	memset(clients[index].buf, 0, HEADERSZ + clients[index].bytesrd);
+	memset(clients[index].buf, '\0', HEADERSZ + clients[index].bytesrd);
 	clients[index].msgsz = 0;
 	clients[index].bytesrd = 0;
 	clients[index].msg_in_proc = MSG_NOT_IN_PROC;
 }
 
-void write_to_client(const int clientfd, const struct client *sender)
+void write_to_client(const int receiver_index, const int sender_index)
 {
-	if ((write(clientfd, sender->buf, HEADERSZ + sender->msgsz)) < 1)
-		printf("Couldn't write in write_to_client()\n");
+	if ((write(p_clients[receiver_index].fd, clients[sender_index].buf,
+			   HEADERSZ + clients[sender_index].msgsz)) < 1) {
+		if (EPIPE == errno)
+			reset_client(receiver_index);
+	}
 }
 
 void write_to_clients(const int sender_index)
 {
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
 		if ((p_clients[i].fd > 2))
-			write_to_client(p_clients[i].fd, &clients[sender_index]);
+			write_to_client(i, sender_index);
 	}
 
 	reset_client(sender_index);

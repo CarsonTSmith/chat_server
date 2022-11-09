@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
 	pthread_t iothrd;
 
 	sockfd = setup_socket(&addr);
-	sigaction(SIGPIPE, &(struct sigaction){SIG_IGN}, NULL);
+	sigaction(SIGPIPE, &(struct sigaction){{SIG_IGN}}, NULL);
 	clients_init();
 
 	if (pthread_create(&iothrd, NULL, &process_messages, NULL) != 0) {
