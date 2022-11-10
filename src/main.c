@@ -19,7 +19,7 @@
 #define PORT 8085
 
 #define SERVER_FULL "Server is full"
-#define CLIENT_CONNECTED_MSG "00000017Client Connected"
+#define CLIENT_CONNECTED_MSG "Client Connected"
 
 #define SEND_TO_ALL -1
 

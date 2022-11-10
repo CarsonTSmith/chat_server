@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 #define HEADERSZ 8
-#define DISCONNECT_FROM_SERVER_MSG "00000026Disconnecting from server"
+#define DISCONNECT_FROM_SERVER_MSG "Disconnecting from server"
 
 /*
  * If this is the first data being read for this msg
@@ -51,6 +51,20 @@ static void rd_header(const int clientfd, const int index)
 	msgsz = rd_msg_len(clients[index].buf);
 	clients[index].msgsz = msgsz > BUFSZ ? BUFSZ : msgsz;
 	clients[index].msg_in_proc = MSG_IN_PROC;
+}
+
+// caller must free this memory
+static char *prepend_header(const char *msg)
+{
+	char lenstr[HEADERSZ + 1];
+	char *formatted_str;
+	int len;
+
+	len = strlen(msg) + 1;
+	snprintf(lenstr, HEADERSZ + 1, "%08i", len);
+	formatted_str = malloc(sizeof(char) * (HEADERSZ + len));
+	snprintf(formatted_str, HEADERSZ + len + 1, "%s%s", lenstr, msg);
+	return formatted_str;
 }
 
 void clients_init()
@@ -176,10 +190,15 @@ void server_send_msg(const int clientfd, const char *msg)
 
 void server_send_msg_all(const char *msg)
 {
+	char *formatted_msg;
+
+	formatted_msg = prepend_header(msg);
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
 		if (p_clients[i].fd > 2)
-			server_send_msg(p_clients[i].fd, msg);
+			server_send_msg(p_clients[i].fd, formatted_msg);
 	}
+
+	free(formatted_msg);
 }
 
 void close_all_fds(const int sockfd)
