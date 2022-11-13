@@ -2,12 +2,13 @@
 
 #include "client.h"
 
+#include <atomic>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,10 +22,8 @@
 #define SERVER_FULL "Server is full"
 #define CLIENT_CONNECTED_MSG "Client Connected"
 
-#define SEND_TO_ALL -1
-
 // current number of clients connected
-atomic_int num_clients = 0;
+std::atomic<int> num_clients = 0;
 
 // array of each client's pollfd struct
 struct pollfd p_clients[MAX_CLIENTS];
@@ -66,7 +65,7 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 {
 	struct pollfd pfd;
 	socklen_t addrsz;
-	int clientfd;
+	int clientfd, flags;
 
 	addrsz = sizeof(*addr);
 
@@ -84,6 +83,9 @@ static void accept_client_conns(const int srvrfd, struct sockaddr_in *addr)
 			printf("accept_client_conns() accept failed");
 			exit(-1);
 		}
+
+		flags = fcntl(clientfd, F_GETFL, 0);
+		fcntl(clientfd, F_SETFL, flags | O_NONBLOCK);
 
 		if (add_client(clientfd) < 0) { // if failed to add client
 			server_send_msg(clientfd, SERVER_FULL);
@@ -121,7 +123,7 @@ int main(int argc, char *argv[])
 	pthread_t iothrd;
 
 	sockfd = setup_socket(&addr);
-	sigaction(SIGPIPE, &(struct sigaction){{SIG_IGN}}, NULL);
+	signal(SIGPIPE, SIG_IGN);
 	clients_init();
 
 	if (pthread_create(&iothrd, NULL, &process_messages, NULL) != 0) {

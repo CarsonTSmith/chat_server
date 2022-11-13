@@ -2,7 +2,7 @@
 #define _CLIENT_H
 
 #include <poll.h>
-#include <stdatomic.h>
+#include <atomic>
 
 #define BUFSZ 8192
 #define MAX_CLIENTS 1024
@@ -11,7 +11,6 @@
 #define MSG_NOT_IN_PROC 'n'
 
 struct client {
-	struct pollfd *pfd; // reference to p_clients at same index
 	char buf[BUFSZ];
 	char msg_in_proc; // header has been read, msg is proc of being rd
 	int bytesrd;
@@ -21,10 +20,10 @@ struct client {
 extern struct pollfd p_clients[MAX_CLIENTS];
 extern struct client clients[MAX_CLIENTS];
 
-extern atomic_int num_clients;
+extern std::atomic<int> num_clients;
 
 void clients_init();
-void reset_client(const int index);
+void reset_client_msg(const int index);
 void write_to_client(const int receiver_index, const int sender_index);
 void write_to_clients(const int sender_index);
 void server_send_msg(const int clientfd, const char *msg);

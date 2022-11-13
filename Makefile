@@ -28,10 +28,10 @@ clean : ; @rm -rf $(APPNAME) $(DEPDIR)/*.d $(ODIR)/*.o
 
 # Build the application by running the link step with all objfile inputs
 $(APPNAME) : $(OBJFILES)
-	$(CC) $(LDFLAGS) $^ -o $(APPNAME)
+	$(CXX) $(LDFLAGS) $^ -o $(APPNAME)
 
 # Add all warnings/errors to cflags default.  This is not required but is a best practice
-CFLAGS += -g -Wall -Werror
+CFLAGS += -std=c++17 -g -Wall -Werror
 
 # The below content is from  http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/
 # with the following changes:
@@ -52,7 +52,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
 # See https://www.gnu.org/software/make/manual/html_node/Implicit-Variables.html
 # and see https://www.gnu.org/software/make/manual/html_node/Catalogue-of-Rules.html#Catalogue-of-Rules
 # for the default c rule
-COMPILE.c = $(CC) $(DEPFLAGS) $(CFLAGS) $(CPPFLAGS) -c
+COMPILE.c = $(CXX) $(DEPFLAGS) $(CFLAGS) $(CPPFLAGS) -c
 
 # Delete the built-in rules for building object files from .c files
 %.o : %.c

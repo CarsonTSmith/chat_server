@@ -62,21 +62,25 @@ static char *prepend_header(const char *msg)
 
 	len = strlen(msg) + 1;
 	snprintf(lenstr, HEADERSZ + 1, "%08i", len);
-	formatted_str = malloc(sizeof(char) * (HEADERSZ + len));
+	formatted_str = (char *)malloc(sizeof(char) * (HEADERSZ + len));
 	snprintf(formatted_str, HEADERSZ + len + 1, "%s%s", lenstr, msg);
 	return formatted_str;
+}
+
+static void reset_client_fd(const int index)
+{
+	p_clients[index].fd = -1;
 }
 
 void clients_init()
 {
 	for (int i = 0; i < MAX_CLIENTS; ++i) {
 		p_clients[i].fd = -1;
-		clients[i].pfd = &p_clients[i];
 		clients[i].msg_in_proc = MSG_NOT_IN_PROC;
 	}
 }
 
-void reset_client(const int index)
+void reset_client_msg(const int index)
 {
 	memset(clients[index].buf, '\0', HEADERSZ + clients[index].bytesrd);
 	clients[index].msgsz = 0;
@@ -88,19 +92,25 @@ void write_to_client(const int receiver_index, const int sender_index)
 {
 	if ((write(p_clients[receiver_index].fd, clients[sender_index].buf,
 			   HEADERSZ + clients[sender_index].msgsz)) < 1) {
-		if (EPIPE == errno)
-			reset_client(receiver_index);
+		if (EPIPE == errno) {
+			reset_client_msg(receiver_index);
+			reset_client_fd(receiver_index);
+		}
 	}
 }
 
 void write_to_clients(const int sender_index)
 {
-	for (int i = 0; i < MAX_CLIENTS; ++i) {
-		if ((p_clients[i].fd > 2))
+	int num_sent = 0;
+
+	for (int i = 0; (i < MAX_CLIENTS) && (num_sent < num_clients); ++i) {
+		if ((p_clients[i].fd > 2)) {
 			write_to_client(i, sender_index);
+			++num_sent;
+		}
 	}
 
-	reset_client(sender_index);
+	reset_client_msg(sender_index);
 }
 
 /*
@@ -147,8 +157,10 @@ int rd_from_client(const int index)
 		}
 	}
 
-	if (ret == -1)
-		reset_client(index);
+	if (ret == -1) {
+		reset_client_msg(index);
+		reset_client_fd(index);
+	}
 
 	return ret;
 }
@@ -190,12 +202,15 @@ void server_send_msg(const int clientfd, const char *msg)
 
 void server_send_msg_all(const char *msg)
 {
+	int count = 0;
 	char *formatted_msg;
 
 	formatted_msg = prepend_header(msg);
-	for (int i = 0; i < MAX_CLIENTS; ++i) {
-		if (p_clients[i].fd > 2)
+	for (int i = 0; (i < MAX_CLIENTS) && (count < num_clients); ++i) {
+		if (p_clients[i].fd > 2) {
 			server_send_msg(p_clients[i].fd, formatted_msg);
+			++count;
+		}
 	}
 
 	free(formatted_msg);
